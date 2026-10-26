@@ -71,4 +71,11 @@ class BookControllerTest {
                 .andExpect(content().contentType("application/problem+json"))
                 .andExpect(jsonPath("$.code").value("BOOK_NOT_FOUND"));
     }
+
+    @Test
+    void nonNumericBookIdReturns400WithCode() throws Exception {
+        mockMvc.perform(get("/api/v1/books/abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
 }

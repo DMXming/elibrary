@@ -1,6 +1,7 @@
 package com.dmx.elibrary.controller;
 
 import static org.mockito.BDDMockito.given;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -101,6 +102,34 @@ class LoanControllerTest {
                         .header("X-User-Id", "2"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("LOAN_NOT_FOUND"));
+    }
+
+    @Test
+    void malformedJsonBodyReturns400WithCode() throws Exception {
+        mockMvc.perform(post("/api/v1/loans")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("this is not json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+    }
+
+    @Test
+    void unsupportedMethodReturns405WithCode() throws Exception {
+        mockMvc.perform(delete("/api/v1/loans")
+                        .header("X-User-Id", "1"))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.code").value("METHOD_NOT_ALLOWED"));
+    }
+
+    @Test
+    void unsupportedMediaTypeReturns415WithCode() throws Exception {
+        mockMvc.perform(post("/api/v1/loans")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.TEXT_PLAIN)
+                        .content("{\"bookId\":1}"))
+                .andExpect(status().isUnsupportedMediaType())
+                .andExpect(jsonPath("$.code").value("MEDIA_TYPE_NOT_SUPPORTED"));
     }
 
     @Test

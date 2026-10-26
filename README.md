@@ -26,7 +26,7 @@ consumes as the patron identity (see [Assumptions & Trade-offs](#assumptions--tr
 - **H2** in-memory database + **Flyway** migrations (validate mode — entities must match
   the schema)
 - **Lombok**, **Bean Validation**
-- **JUnit 5**, **Mockito**, **MockMvc** — 36 tests: unit, slice (`@DataJpaTest`,
+- **JUnit 5**, **Mockito**, **MockMvc** — 42 tests: unit, slice (`@DataJpaTest`,
   `@WebMvcTest`), and end-to-end
 
 ## Quick Start
@@ -159,7 +159,6 @@ response (`application/problem+json`) with a machine-readable `code`:
 
 ```json
 {
-  "type": "about:blank",
   "title": "Not Found",
   "status": 404,
   "detail": "Book not found",
@@ -170,14 +169,17 @@ response (`application/problem+json`) with a machine-readable `code`:
 | HTTP | `code` | When |
 |------|--------|------|
 | 400 | `USER_ID_MISSING` | `X-User-Id` header absent or not a number on a protected endpoint |
-| 400 | `VALIDATION_FAILED` | Request body fails Bean Validation |
+| 400 | `VALIDATION_FAILED` | Bean Validation, malformed JSON body, or a non-numeric path variable (detail is always English) |
 | 404 | `BOOK_NOT_FOUND` | Unknown book id |
 | 404 | `PATRON_NOT_FOUND` | Unknown patron id |
 | 404 | `LOAN_NOT_FOUND` | Unknown loan id — **or** the loan belongs to another patron (ownership is never revealed) |
+| 404 | `NOT_FOUND` | Unknown route |
 | 409 | `NO_COPIES_AVAILABLE` | All copies are on loan |
 | 409 | `BOOK_ALREADY_BORROWED` | The caller already has an active loan of this book |
 | 409 | `LOAN_ALREADY_RETURNED` | Returning a loan that was already returned |
 | 409 | `CONCURRENT_UPDATE` | Two requests raced on the last copy; retry |
+| 405 | `METHOD_NOT_ALLOWED` | HTTP method not supported by the endpoint |
+| 415 | `MEDIA_TYPE_NOT_SUPPORTED` | Request `Content-Type` not supported |
 | 500 | `INTERNAL_ERROR` | Anything unexpected |
 
 ## Assumptions & Trade-offs
@@ -240,7 +242,7 @@ src/test/java/com/dmx/elibrary/
 ./mvnw test
 ```
 
-36 tests across five layers. Highlights:
+42 tests across five layers. Highlights:
 
 - **`BookRepositoryTest`** reproduces a real concurrent borrow of the last copy on two
   entity managers and proves the optimistic lock fires.

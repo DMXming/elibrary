@@ -85,6 +85,27 @@ class ELibraryEndToEndTest {
     }
 
     @Test
+    void unknownRouteReturns404WithCode() throws Exception {
+        mockMvc.perform(get("/api/v1/definitely-not-here"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    }
+
+    @Test
+    void validationErrorsUseExactEnglishDetailRegardlessOfMachineLocale() throws Exception {
+        // The exact-string pin also catches locale drift: on a non-English JVM the
+        // default message comes out localized, on an English JVM it reads
+        // "must be greater than 0" — neither equals the pin.
+        mockMvc.perform(post("/api/v1/loans")
+                        .header("X-User-Id", "1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"bookId\":-1}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("VALIDATION_FAILED"))
+                .andExpect(jsonPath("$.detail").value("bookId: must be positive"));
+    }
+
+    @Test
     void unknownPatronAndUnknownBookReturn404ProblemDetails() throws Exception {
         mockMvc.perform(post("/api/v1/loans")
                         .header("X-User-Id", "999")

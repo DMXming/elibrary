@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 import com.dmx.elibrary.domain.Book;
@@ -18,9 +19,11 @@ import com.dmx.elibrary.repository.BookRepository;
 import com.dmx.elibrary.repository.LoanRepository;
 import com.dmx.elibrary.repository.PatronRepository;
 import com.dmx.elibrary.support.MutableClock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -116,6 +119,81 @@ class LoanServiceImplTest {
         then(bookRepository).shouldHaveNoInteractions();
     }
 
+    @Test
+    void returnLoanMarksReturnedAndRestoresCopy() {
+        Book book = book(1);
+        Loan loan = Loan.create(book, patronWithId(1L), NOW, Duration.ofDays(14));
+        given(loanRepository.findById(7L)).willReturn(Optional.of(loan));
+
+        LoanResponse response = loanService.returnLoan(1L, 7L);
+
+        assertThat(response.returnedAt()).isEqualTo(NOW);
+        assertThat(response.status()).isEqualTo(LoanStatus.RETURNED);
+        assertThat(book.getAvailableCopies()).isEqualTo(1);
+    }
+
+    @Test
+    void returnLoanFailsWhenAlreadyReturned() {
+        Loan loan = Loan.create(book(1), patronWithId(1L), NOW.minus(1, ChronoUnit.DAYS),
+                Duration.ofDays(14));
+        loan.returnNow(NOW);
+        given(loanRepository.findById(7L)).willReturn(Optional.of(loan));
+
+        assertThatThrownBy(() -> loanService.returnLoan(1L, 7L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.LOAN_ALREADY_RETURNED);
+    }
+
+    @Test
+    void returnLoanFailsForUnknownLoanId() {
+        given(loanRepository.findById(99L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> loanService.returnLoan(1L, 99L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.LOAN_NOT_FOUND);
+    }
+
+    @Test
+    void returnLoanFailsForOtherPatronsLoan() {
+        Loan loan = Loan.create(book(1), patronWithId(1L), NOW, Duration.ofDays(14));
+        given(loanRepository.findById(7L)).willReturn(Optional.of(loan));
+
+        assertThatThrownBy(() -> loanService.returnLoan(2L, 7L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.LOAN_NOT_FOUND);
+        then(patronRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    void listCurrentLoansReturnsOnlyActiveWithOverdueStatus() {
+        // The repository query returns only active loans; a loan whose dueAt is
+        // in the past must surface as OVERDUE, not ACTIVE.
+        Patron patron = patronWithId(1L);
+        Loan overdue = Loan.create(book(2), patron, NOW, Duration.ofDays(-1));
+        given(patronRepository.findById(1L)).willReturn(Optional.of(patron));
+        given(loanRepository.findActiveLoansByPatronIdOrderByDueAtAsc(1L)).willReturn(List.of(overdue));
+
+        List<LoanResponse> responses = loanService.listCurrentLoans(1L);
+
+        assertThat(responses).hasSize(1);
+        assertThat(responses.get(0).status()).isEqualTo(LoanStatus.OVERDUE);
+        assertThat(responses.get(0).returnedAt()).isNull();
+    }
+
+    @Test
+    void listCurrentLoansFailsForUnknownPatron() {
+        given(patronRepository.findById(9L)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> loanService.listCurrentLoans(9L))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PATRON_NOT_FOUND);
+        then(loanRepository).shouldHaveNoInteractions();
+    }
+
     private Book book(int availableCopies) {
         return Book.builder()
                 .title("Clean Code")
@@ -135,5 +213,12 @@ class LoanServiceImplTest {
                 .name("Alice Chen")
                 .email("alice@example.com")
                 .build();
+    }
+
+    /** The entity builders do not expose the id, so a mock carries it. */
+    private Patron patronWithId(long id) {
+        Patron patron = mock(Patron.class);
+        given(patron.getId()).willReturn(id);
+        return patron;
     }
 }

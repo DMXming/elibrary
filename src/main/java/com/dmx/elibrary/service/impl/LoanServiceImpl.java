@@ -12,6 +12,7 @@ import com.dmx.elibrary.repository.PatronRepository;
 import com.dmx.elibrary.service.LoanService;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,5 +54,33 @@ public class LoanServiceImpl implements LoanService {
         // at commit and the client gets 409 CONCURRENT_UPDATE (see GlobalExceptionHandler).
         Loan loan = loanRepository.save(Loan.create(book, patron, clock.instant(), loanPeriod));
         return LoanResponse.from(loan, clock.instant());
+    }
+
+    @Override
+    @Transactional
+    public LoanResponse returnLoan(Long patronId, Long loanId) {
+        Loan loan = loanRepository.findById(loanId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.LOAN_NOT_FOUND));
+        // Another patron's loan is indistinguishable from a missing one: looking
+        // up the patron would leak whether the loan exists at all.
+        if (!patronId.equals(loan.getPatron().getId())) {
+            throw new BusinessException(ErrorCode.LOAN_NOT_FOUND);
+        }
+        if (loan.getReturnedAt() != null) {
+            throw new BusinessException(ErrorCode.LOAN_ALREADY_RETURNED);
+        }
+        loan.returnNow(clock.instant());
+        return LoanResponse.from(loan, clock.instant());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<LoanResponse> listCurrentLoans(Long patronId) {
+        if (patronRepository.findById(patronId).isEmpty()) {
+            throw new BusinessException(ErrorCode.PATRON_NOT_FOUND);
+        }
+        return loanRepository.findActiveLoansByPatronIdOrderByDueAtAsc(patronId).stream()
+                .map(loan -> LoanResponse.from(loan, clock.instant()))
+                .toList();
     }
 }

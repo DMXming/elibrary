@@ -17,6 +17,7 @@ public interface LoanRepository extends JpaRepository<Loan, Long> {
 
     @Query("""
             SELECT l FROM Loan l
+            JOIN FETCH l.book
             WHERE l.patron.id = :patronId AND l.returnedAt IS NULL
             ORDER BY l.dueAt ASC
             """)

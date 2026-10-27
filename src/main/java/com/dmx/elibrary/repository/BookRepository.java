@@ -11,10 +11,22 @@ public interface BookRepository extends JpaRepository<Book, Long> {
 
     @Query("""
             SELECT b FROM Book b
-            WHERE :q IS NULL
-               OR LOWER(b.title) LIKE LOWER(CONCAT('%', :q, '%'))
-               OR LOWER(b.author) LIKE LOWER(CONCAT('%', :q, '%'))
-               OR LOWER(b.category) LIKE LOWER(CONCAT('%', :q, '%'))
+            WHERE LOWER(b.title) LIKE LOWER(:pattern) ESCAPE '\\'
+               OR LOWER(b.author) LIKE LOWER(:pattern) ESCAPE '\\'
+               OR LOWER(b.category) LIKE LOWER(:pattern) ESCAPE '\\'
             """)
-    Page<Book> search(@Param("q") String q, Pageable pageable);
+    Page<Book> searchEscaped(@Param("pattern") String pattern, Pageable pageable);
+
+    /**
+     * Searches title/author/category case-insensitively, treating {@code %},
+     * {@code _}, and {@code \} in the query as literal characters rather than
+     * LIKE wildcards.
+     */
+    default Page<Book> search(String q, Pageable pageable) {
+        if (q == null || q.isEmpty()) {
+            return searchEscaped("%%", pageable);
+        }
+        String escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_");
+        return searchEscaped("%" + escaped + "%", pageable);
+    }
 }

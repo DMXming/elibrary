@@ -44,6 +44,32 @@ class BookRepositoryTest {
                 .containsExactly("Clean Code", "Domain-Driven Design");
     }
 
+    @Test
+    void searchTreatsWildcardCharactersAsLiterals() {
+        bookRepository.save(book("C++ 100%", "A. Author", "Languages"));
+        bookRepository.save(book("C++ 100X", "B. Author", "Languages"));
+        bookRepository.save(book("Snake_Case", "C. Author", "Languages"));
+        bookRepository.save(book("SnakeXCase", "D. Author", "Languages"));
+
+        // A % in the query must match only the literal percent sign, not X...
+        assertThat(bookRepository.search("100%", PageRequest.of(0, 20)).getContent())
+                .extracting(Book::getTitle)
+                .containsExactly("C++ 100%");
+        // ...and an _ must match only the literal underscore, not any character.
+        assertThat(bookRepository.search("Snake_Case", PageRequest.of(0, 20)).getContent())
+                .extracting(Book::getTitle)
+                .containsExactly("Snake_Case");
+    }
+
+    @Test
+    void searchMatchesCjkSubstrings() {
+        bookRepository.save(book("深入理解计算机系统", "Randal E. Bryant", "计算机科学"));
+
+        assertThat(bookRepository.search("计算机", PageRequest.of(0, 20)).getContent())
+                .extracting(Book::getTitle)
+                .containsExactly("深入理解计算机系统");
+    }
+
     private Book book(String title, String author, String category) {
         return Book.builder()
                 .title(title)

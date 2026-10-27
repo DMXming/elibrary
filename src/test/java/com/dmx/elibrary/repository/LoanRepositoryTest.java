@@ -13,6 +13,8 @@ import jakarta.persistence.RollbackException;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
+import org.hibernate.Hibernate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
@@ -35,6 +37,9 @@ class LoanRepositoryTest {
 
     @Autowired
     EntityManagerFactory entityManagerFactory;
+
+    @Autowired
+    EntityManager entityManager;
 
     private int seq = 0;
 
@@ -74,6 +79,24 @@ class LoanRepositoryTest {
     }
 
     @Test
+    void findActiveLoansByPatronIdFetchesBooksEagerly() {
+        Book book = bookRepository.save(book(2));
+        Patron patron = patronRepository.save(patron());
+        loanRepository.save(Loan.create(book, patron, NOW, Duration.ofDays(14)));
+
+        // Simulate the service's situation: a fresh persistence context where
+        // the book is not yet loaded. Without a fetch join the returned loan
+        // would hold a lazy proxy and reading each title would cost one
+        // SELECT per loan (N+1).
+        entityManager.clear();
+
+        List<Loan> loans = loanRepository.findActiveLoansByPatronIdOrderByDueAtAsc(patron.getId());
+
+        assertThat(loans).hasSize(1);
+        assertThat(Hibernate.isInitialized(loans.get(0).getBook())).isTrue();
+    }
+
+    @Test
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     void optimisticLockingPreventsLostUpdateOnBook() {
         Book book = bookRepository.save(book(1));
@@ -96,6 +119,14 @@ class LoanRepositoryTest {
             assertThatThrownBy(() -> em2.getTransaction().commit())
                     .isInstanceOf(RollbackException.class)
                     .hasCauseInstanceOf(OptimisticLockException.class);
+
+            // After the loser rolls back, the committed state still reflects only
+            // the winner's borrow: exactly one copy taken, never negative.
+            EntityManager emVerify = entityManagerFactory.createEntityManager();
+            emVerify.getTransaction().begin();
+            assertThat(emVerify.find(Book.class, id).getAvailableCopies()).isEqualTo(0);
+            emVerify.getTransaction().commit();
+            emVerify.close();
         } finally {
             if (em2.getTransaction().isActive()) {
                 em2.getTransaction().rollback();

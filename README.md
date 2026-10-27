@@ -26,7 +26,7 @@ consumes as the patron identity (see [Assumptions & Trade-offs](#assumptions--tr
 - **H2** in-memory database + **Flyway** migrations (validate mode — entities must match
   the schema)
 - **Lombok**, **Bean Validation**
-- **JUnit 5**, **Mockito**, **MockMvc** — 42 tests: unit, slice (`@DataJpaTest`,
+- **JUnit 5**, **Mockito**, **MockMvc** — 45 tests: unit, slice (`@DataJpaTest`,
   `@WebMvcTest`), and end-to-end
 
 ## Quick Start
@@ -43,6 +43,9 @@ H2 console at `http://localhost:8080/h2-console` with:
 
 - JDBC URL: `jdbc:h2:mem:elibrary`
 - User name: `sa` (empty password)
+
+The console is enabled for development convenience only — disable
+`spring.h2.console.enabled` in any production deployment.
 
 Flyway migrates and seeds the database on startup: **3 patrons** (ids 1–3: Alice Chen,
 Bob Wang, Carol Lin) and **10 books** (book 1 *Clean Code* has 2 copies; book 3
@@ -242,10 +245,11 @@ src/test/java/com/dmx/elibrary/
 ./mvnw test
 ```
 
-42 tests across five layers. Highlights:
+45 tests across five layers. Highlights:
 
 - **`BookRepositoryTest`** reproduces a real concurrent borrow of the last copy on two
-  entity managers and proves the optimistic lock fires.
+  entity managers, proves the optimistic lock fires, and checks the committed
+  database state afterwards (exactly one copy taken, never negative).
 - **`LoanServiceImplTest`** covers borrow/return rules (availability, duplicates,
   already-returned, cross-patron access) against a mutable `Clock`, including the
   overdue-status derivation.
